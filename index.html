@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
   <meta charset="UTF-8">
   <title>NAME</title>
-  <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css' rel='stylesheet' />
-  <script src='https://cdn.jsdelivr.net/npm/rrule@2.6.4/dist/es5/rrule.min.js'></script>
-  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
-  <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/rrule@6.1.15/index.global.min.js'></script>
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/rrule@2.6.4/dist/es5/rrule.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/rrule@6.1.15/index.global.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ical.js/1.4.0/ical.min.js"></script>
   <style>
     body { margin: 40px; font-family: Arial, sans-serif; }
@@ -15,7 +15,10 @@
 </head>
 <body>
 
-  <h2 style="text-align:center;">NAME</h2>
+  <div class="header-container">
+    <h2>NAME</h2>
+  </div>
+
   <div id="calendar"></div>
 
   <script>
@@ -37,18 +40,17 @@
         businessHours: {
           startTime: '07:00',
           endTime: '17:00',
-          daysOfWeek: [1, 2, 3, 4, 5] // Monday - Friday
+          daysOfWeek: [1, 2, 3, 4, 5]
         },
         slotLabelFormat: {
           hour: '2-digit',
           minute: '2-digit',
           hour12: false
         },
-        firstDay: 1, // Monday as the first day of the week
-        hiddenDays: [0, 6], // Hide Sunday and Saturday
+        firstDay: 1,
+        hiddenDays: [0, 6],
         events: [],
-
-        eventTimeFormat: { 
+        eventTimeFormat: {
           hour: '2-digit',
           minute: '2-digit',
           hour12: false
@@ -57,7 +59,6 @@
 
       calendar.render();
 
-      // Function to load and parse .ics file
       function loadICS(url) {
         const timestamp = new Date().getTime();
         fetch(`${url}?t=${timestamp}`)
@@ -71,11 +72,21 @@
 
             events.forEach(event => {
               const e = new ICAL.Event(event);
-
               const rruleProperty = event.getFirstPropertyValue('rrule');
 
               if (rruleProperty) {
-                // Recurring event
+                const exdateProps = event.getAllProperties('exdate');
+                let exdates = [];
+                exdateProps.forEach(prop => {
+                  let values = prop.getValues();
+                  if (!Array.isArray(values)) {
+                    values = [values];
+                  }
+                  values.forEach(val => {
+                    exdates.push(val.toJSDate().toISOString());
+                  });
+                });
+
                 parsedEvents.push({
                   title: e.summary + ' (Recurring)',
                   rrule: {
@@ -85,23 +96,22 @@
                     byweekday: rruleProperty.byDay || undefined,
                     until: rruleProperty.until ? rruleProperty.until.toJSDate().toISOString() : undefined
                   },
+                  exdate: exdates,
                   duration: e.endDate.toJSDate() - e.startDate.toJSDate(),
                   description: e.description,
-                  location: e.location
+                  location: e.location,
                 });
               } else {
-                // Single event
                 parsedEvents.push({
                   title: e.summary,
                   start: e.startDate.toJSDate().toISOString(),
                   end: e.endDate.toJSDate().toISOString(),
                   description: e.description,
-                  location: e.location
+                  location: e.location,
                 });
               }
             });
 
-            // Load events into FullCalendar
             calendar.removeAllEvents();
             calendar.addEventSource(parsedEvents);
           })
@@ -113,7 +123,7 @@
 
       const icsUrl = '/calendar-proxy/calendar.ics';
       loadICS(icsUrl);
-      setInterval(() => loadICS(icsUrl), 60000); // Refresh time
+      setInterval(() => loadICS(icsUrl), 60000);
     });
   </script>
 
