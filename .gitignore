@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+
+# Real calendar data — keep it out of the repository
+calendar-proxy/calendar.ics
