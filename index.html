@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <title>NAME</title>
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/rrule@2.6.4/dist/es5/rrule.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/rrule@6.1.15/index.global.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ical.js/1.4.0/ical.min.js"></script>
   <style>
     body { margin: 40px; font-family: Arial, sans-serif; }
@@ -22,7 +20,80 @@
   <div id="calendar"></div>
 
   <script>
+    // Expands the VEVENTs of a parsed calendar into FullCalendar events within [rangeStart, rangeEnd).
+    // ical.js handles RRULE (incl. BYDAY/COUNT), EXDATE, RECURRENCE-ID and time zones.
+    function expandEvents(comp, rangeStart, rangeEnd) {
+      comp.getAllSubcomponents('vtimezone').forEach(tz => ICAL.TimezoneService.register(tz));
+
+      const masters = [];
+      const mastersByUid = new Map();
+      const exceptions = [];
+
+      comp.getAllSubcomponents('vevent').forEach(vevent => {
+        const e = new ICAL.Event(vevent);
+        if (e.isRecurrenceException()) {
+          exceptions.push(e);
+        } else {
+          masters.push(e);
+          if (e.uid) mastersByUid.set(e.uid, e);
+        }
+      });
+
+      // Moved occurrences replace the original instance of their series.
+      let iterateUntil = rangeEnd;
+      exceptions.forEach(ex => {
+        const master = mastersByUid.get(ex.uid);
+        if (master && master.isRecurring()) {
+          master.relateException(ex);
+          const recurrenceId = ex.recurrenceId.toJSDate();
+          if (recurrenceId > iterateUntil) iterateUntil = recurrenceId;
+        } else {
+          masters.push(ex);
+        }
+      });
+
+      const result = [];
+
+      function addOccurrence(item, startDate, endDate, recurring) {
+        const status = item.component.getFirstPropertyValue('status');
+        if (status && status.toUpperCase() === 'CANCELLED') return;
+
+        const start = startDate.toJSDate();
+        const end = endDate.toJSDate();
+        if (start >= rangeEnd || end < rangeStart) return;
+
+        // All-day dates stay as plain YYYY-MM-DD so they don't shift through UTC.
+        const allDay = startDate.isDate;
+        result.push({
+          title: item.summary + (recurring ? ' (Recurring)' : ''),
+          start: allDay ? startDate.toString() : start,
+          end: allDay ? endDate.toString() : end,
+          allDay: allDay,
+          description: item.description,
+          location: item.location,
+        });
+      }
+
+      masters.forEach(e => {
+        if (!e.isRecurring()) {
+          addOccurrence(e, e.startDate, e.endDate, false);
+          return;
+        }
+
+        const iterator = e.iterator();
+        let next;
+        while ((next = iterator.next())) {
+          if (next.toJSDate() >= iterateUntil) break;
+          const details = e.getOccurrenceDetails(next);
+          addOccurrence(details.item, details.startDate, details.endDate, true);
+        }
+      });
+
+      return result;
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+      const icsUrl = '/calendar-proxy/calendar.ics';
       const calendarEl = document.getElementById('calendar');
       const calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'timeGridWeek',
@@ -34,7 +105,7 @@
           center: 'title',
           right: 'timeGridDay,timeGridWeek'
         },
-        allDaySlot: false,
+        allDaySlot: true,
         slotMinTime: "07:00:00",
         slotMaxTime: "17:00:00",
         businessHours: {
@@ -49,7 +120,7 @@
         },
         firstDay: 1,
         hiddenDays: [0, 6],
-        events: [],
+        events: loadICS,
         eventTimeFormat: {
           hour: '2-digit',
           minute: '2-digit',
@@ -59,71 +130,22 @@
 
       calendar.render();
 
-      function loadICS(url) {
+      function loadICS(info, successCallback, failureCallback) {
         const timestamp = new Date().getTime();
-        fetch(`${url}?t=${timestamp}`)
+        fetch(`${icsUrl}?t=${timestamp}`)
           .then(response => response.text())
           .then(data => {
-            const jcalData = ICAL.parse(data);
-            const comp = new ICAL.Component(jcalData);
-            const events = comp.getAllSubcomponents("vevent");
-
-            const parsedEvents = [];
-
-            events.forEach(event => {
-              const e = new ICAL.Event(event);
-              const rruleProperty = event.getFirstPropertyValue('rrule');
-
-              if (rruleProperty) {
-                const exdateProps = event.getAllProperties('exdate');
-                let exdates = [];
-                exdateProps.forEach(prop => {
-                  let values = prop.getValues();
-                  if (!Array.isArray(values)) {
-                    values = [values];
-                  }
-                  values.forEach(val => {
-                    exdates.push(val.toJSDate().toISOString());
-                  });
-                });
-
-                parsedEvents.push({
-                  title: e.summary + ' (Recurring)',
-                  rrule: {
-                    dtstart: e.startDate.toJSDate().toISOString(),
-                    freq: rruleProperty.freq ? rruleProperty.freq.toLowerCase() : 'weekly',
-                    interval: rruleProperty.interval || 1,
-                    byweekday: rruleProperty.byDay || undefined,
-                    until: rruleProperty.until ? rruleProperty.until.toJSDate().toISOString() : undefined
-                  },
-                  exdate: exdates,
-                  duration: e.endDate.toJSDate() - e.startDate.toJSDate(),
-                  description: e.description,
-                  location: e.location,
-                });
-              } else {
-                parsedEvents.push({
-                  title: e.summary,
-                  start: e.startDate.toJSDate().toISOString(),
-                  end: e.endDate.toJSDate().toISOString(),
-                  description: e.description,
-                  location: e.location,
-                });
-              }
-            });
-
-            calendar.removeAllEvents();
-            calendar.addEventSource(parsedEvents);
+            const comp = new ICAL.Component(ICAL.parse(data));
+            successCallback(expandEvents(comp, info.start, info.end));
           })
           .catch(err => {
             console.error('Error loading .ics file:', err);
             alert(`Failed to load the calendar. Details: ${err.message}`);
+            failureCallback(err);
           });
       }
 
-      const icsUrl = '/calendar-proxy/calendar.ics';
-      loadICS(icsUrl);
-      setInterval(() => loadICS(icsUrl), 60000);
+      setInterval(() => calendar.refetchEvents(), 60000);
     });
   </script>
 
