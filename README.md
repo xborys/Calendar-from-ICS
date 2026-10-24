@@ -11,7 +11,7 @@ Prosta strona, która wyświetla kalendarz tygodniowy z wydarzeniami wczytanymi 
 
 ## Obsługiwane elementy formatu iCalendar
 
-- pojedyncze wydarzenia i wydarzenia całodniowe (`DTSTART;VALUE=DATE`)
+- pojedyncze wydarzenia
 - wydarzenia cykliczne (`RRULE`) ze wszystkimi częściami reguły, m.in. `BYDAY`, `COUNT`, `UNTIL`, `INTERVAL`, `BYMONTHDAY`
 - wykluczone wystąpienia (`EXDATE`) i dodatkowe (`RDATE`)
 - przeniesione lub zmienione wystąpienia serii (`RECURRENCE-ID`)
@@ -48,12 +48,12 @@ Wszystko ustawia się w `index.html`:
 | Domyślny widok | `initialView` | tydzień (`timeGridWeek`) |
 | Tytuł strony | `<title>` i `<h2>` | `NAME` (do podmiany) |
 
-Wydarzenia poza widocznymi godzinami i w ukryte dni nie są wyświetlane.
+Wydarzenia poza widocznymi godzinami i w ukryte dni nie są wyświetlane. Kalendarz nie ma wiersza „all-day”, więc wydarzenia całodniowe (`DTSTART;VALUE=DATE`) też się nie pokazują.
 
 ## Zależności (CDN)
 
-- FullCalendar 6.1.15
-- ical.js 1.4.0
+- FullCalendar 7.1.3 (bundle `all/global.js` z globalnym `FullCalendar` i motyw `classic`; od v7 style nie są wbudowane, więc ładowane są osobno `skeleton.css`, `themes/classic/theme.css` i `themes/classic/palette.css`)
+- ical.js 2.2.1 (moduł ES importowany w `<script type="module">`; od wersji 2.x biblioteka nie udostępnia już globalnego `ICAL`)
 
 ## Prywatność
 
